@@ -1,18 +1,26 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TCGFetcher - Pokémon Card Tool</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pokémon TCG Fetcher</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Japanese Pokémon Card Lookup</h1>
-    <input type="text" id="cardInput" placeholder="Enter card (e.g., Machamp GX 029/049 or 030/080 XY2 RR)" />
-    <button onclick="fetchCardData()">Search</button>
-    <div id="cardData"></div>
-  </div>
+
+  <h1>Pokémon Card Data Fetcher</h1>
+
+  <!-- 🔽 Your fetch form here -->
+  <form id="fetchForm">
+    <input type="text" id="cardInput" placeholder="Enter card name + number or number/set/rarity">
+    <button type="submit">Fetch Card</button>
+  </form>
+
+  <!-- 🔽 This is where the result will show -->
+  <div id="result"></div>
+
+  <!-- 🔽 Link your script last, before closing body -->
   <script src="script.js"></script>
+
 </body>
 </html>
