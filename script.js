@@ -6,11 +6,12 @@ document.getElementById('fetchForm').addEventListener('submit', async (e) => {
   result.innerHTML = '<p>Fetching data...</p>';
 
   try {
-    const cardData = parseCardInput(input);
+    const cardData = await resolveInputViaGoogle(input);
 
     let jpCardInfo = await fetchPokemonCardJP(cardData);
     let bulbapediaInfo = await fetchBulbapediaInfo(cardData);
 
+    // Fallback to pokemon-card.com data if Bulbapedia info is missing
     if (!bulbapediaInfo.nameEN || bulbapediaInfo.nameEN === '—') {
       bulbapediaInfo.nameEN = jpCardInfo.nameEN;
     }
@@ -49,9 +50,9 @@ document.getElementById('fetchForm').addEventListener('submit', async (e) => {
 });
 
 function parseCardInput(input) {
-  const match = input.match(/(\\d{2,3})\\/(\\d{2,3})\\s*(\\w+)?\\s*(RR|SR|UR|R|U|C)?/i);
+  const match = input.match(/(\d{2,3})\/(\d{2,3})\s*(\w+)?\s*(RR|SR|UR|R|U|C)?/i);
   if (match) {
-    const [, numberStart, numberEnd, setCode, rarity] = match;
+    const [ , numberStart, numberEnd, setCode, rarity ] = match;
     return {
       number: `${numberStart}/${numberEnd}`,
       setCode: setCode || '',
@@ -59,8 +60,8 @@ function parseCardInput(input) {
     };
   }
 
-  const parts = input.split(/\\s+/);
-  if (parts.length >= 2 && /\\d{2,3}\\/\\d{2,3}/.test(parts[parts.length - 1])) {
+  const parts = input.split(/\s+/);
+  if (parts.length >= 2 && /\d{2,3}\/\d{2,3}/.test(parts[parts.length - 1])) {
     return {
       name: parts.slice(0, -1).join(' '),
       number: parts[parts.length - 1],
@@ -72,44 +73,84 @@ function parseCardInput(input) {
   throw new Error('Please enter a card number and set, or name and number.');
 }
 
-async function fetchPokemonCardJP({ number }) {
+async function resolveInputViaGoogle(input) {
+  try {
+    const query = `site:bulbapedia.bulbagarden.net ${input}`;
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`);
+    const data = await response.json();
+    const html = data.contents;
+
+    const match = html.match(/https:\/\/bulbapedia\.bulbagarden\.net\/wiki\/[^"\s]+/);
+    if (match) {
+      const pageUrl = match[0];
+      const pageRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(pageUrl)}`);
+      const pageData = await pageRes.json();
+      const pageHtml = pageData.contents;
+
+      const jpMatch = pageHtml.match(/Japanese card no\.\s*<\/th>\s*<td[^>]*>(\d+\/\d+)<\/td>/);
+      const jpNumber = jpMatch ? jpMatch[1] : '';
+
+      const rarityMatch = pageHtml.match(/Japanese rarity\s*<\/th>\s*<td[^>]*>([^<]+)<\/td>/);
+      const rarity = rarityMatch ? rarityMatch[1] : '';
+
+      const nameMatch = pageHtml.match(/<title>([^|<]+)\|/);
+      const name = nameMatch ? nameMatch[1].trim() : input;
+
+      return {
+        name,
+        number: jpNumber,
+        rarity
+      };
+    }
+  } catch (err) {
+    console.warn('Google fallback failed:', err);
+  }
+
+  return parseCardInput(input);
+}
+
+async function fetchPokemonCardJP({ number, setCode, rarity }) {
   const searchUrl = `https://www.pokemon-card.com/card-search/details.php/card/${encodeURIComponent(number)}/regu/all`;
   try {
     const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`);
     const data = await response.json();
     const html = data.contents;
 
-    const nameJPMatch = html.match(/<h1 class=\"cardname\">([^<]+)<\\/h1>/);
+    const nameJPMatch = html.match(/<h1 class="cardname">([^<]+)<\/h1>/);
     const nameJP = nameJPMatch ? nameJPMatch[1].trim() : '—';
 
-    const imageMatch = html.match(/<div class=\"thumb\">\\s*<img src=\"([^\"]+)\"/);
-    const image = imageMatch ? `https://www.pokemon-card.com${imageMatch[1]}` : '';
-
-    const illustratorMatch = html.match(/<dt>イラストレーター<\\/dt>\\s*<dd>([^<]+)<\\/dd>/);
+    const nameEN = 'Unknown';
+    const setNameJP = '—';
+    const releaseYear = '—';
+    const illustratorMatch = html.match(/<dt>イラストレーター<\/dt>\s*<dd>([^<]+)<\/dd>/);
     const illustrator = illustratorMatch ? illustratorMatch[1].trim() : '—';
+
+    const imageMatch = html.match(/<div class="thumb">\s*<img src="([^"]+)"/);
+    const image = imageMatch ? `https://www.pokemon-card.com${imageMatch[1]}` : '';
 
     return {
       nameJP,
-      nameEN: '—',
+      nameEN,
       number,
-      rarity: '—',
-      setCode: '',
-      setNameJP: '—',
+      rarity: rarity || '—',
+      setCode,
+      setNameJP,
       setNameEN: '—',
-      releaseYear: '—',
+      releaseYear,
       illustrator,
       condition: 'NM',
       pricePaidJPY: '',
       ebayPriceUSD: '',
       image
     };
-  } catch {
+  } catch (err) {
     return {
       nameJP: '—',
       nameEN: '—',
       number,
-      rarity: '—',
-      setCode: '',
+      rarity: rarity || '—',
+      setCode,
       setNameJP: '—',
       setNameEN: '—',
       releaseYear: '—',
@@ -117,30 +158,31 @@ async function fetchPokemonCardJP({ number }) {
       condition: 'NM',
       pricePaidJPY: '',
       ebayPriceUSD: '',
-      image: ''
+      image: '',
     };
   }
 }
 
 async function fetchBulbapediaInfo({ name, number }) {
   if (!name) return { nameEN: '—', setNameEN: '—' };
+
   try {
     const url = `https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(name.replace(/ /g, '_'))}_(${number})`;
     const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
     const data = await response.json();
     const html = data.contents;
 
-    const setMatch = html.match(/<th[^>]*>English expansion[^<]*<\\/th>\\s*<td[^>]*><a[^>]*>([^<]+)<\\/a>/);
+    const setMatch = html.match(/<th[^>]*>English expansion[^<]*<\/th>\s*<td[^>]*><a[^>]*>([^<]+)<\/a>/);
     const setNameEN = setMatch ? setMatch[1].trim() : '—';
 
-    const nameMatch = html.match(/<title>([^|]+)\\|/);
+    const nameMatch = html.match(/<title>([^|]+)\|/);
     const nameEN = nameMatch ? nameMatch[1].trim() : name;
 
     return {
       nameEN,
       setNameEN
     };
-  } catch {
+  } catch (err) {
     return {
       nameEN: name,
       setNameEN: '—'

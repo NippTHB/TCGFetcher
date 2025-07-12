@@ -2,29 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Pokémon Card Data Fetcher</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="navbar">
-    <a href="https://www.ebay.com/sl/sell" target="_blank">My eBay</a>
-    <a href="https://bulbapedia.bulbagarden.net/wiki/List_of_Japanese_Pok%C3%A9mon_Trading_Card_Game_expansions" target="_blank">Bulbapedia</a>
-    <a href="https://www.pricecharting.com/game/pokemon-japanese-eevee-heroes/flareon-v-11#completed-auctions-used" target="_blank">PriceCharting</a>
-  </div>
-
-  <div class="container">
+  <header>
     <h1>Pokémon Card Data Fetcher</h1>
+    <div class="nav-links">
+      <a href="https://www.ebay.com/usr/nipponplaza" target="_blank">My eBay</a>
+      <a href="https://bulbapedia.bulbagarden.net/wiki/List_of_Japanese_Pok%C3%A9mon_Trading_Card_Game_expansions" target="_blank">Bulbapedia</a>
+      <a href="https://www.pricecharting.com" target="_blank">PriceCharting</a>
+    </div>
+  </header>
+
+  <main>
     <form id="fetchForm">
-      <input
-        type="text"
-        id="cardInput"
-        placeholder="Enter card name + number or 030/080 XY2 RR"
-      />
+      <input type="text" id="cardInput" placeholder="Enter card name + number or number/set/rarity" required />
       <button type="submit">Fetch Card</button>
     </form>
+
     <div id="result"></div>
-  </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 Nippon Plaza • TCG Fetcher Tool</p>
+  </footer>
 
   <script src="script.js"></script>
 </body>
