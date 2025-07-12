@@ -6,40 +6,41 @@ document.getElementById('fetchForm').addEventListener('submit', async (e) => {
   result.innerHTML = '<p>Fetching data...</p>';
 
   try {
-    const cardData = parseCardInput(input);
+    const cardData = await resolveInputViaHareruya(input);
+    const searchQuery = encodeURIComponent(cardData.nameEN || input);
 
-    let jpCardInfo = await fetchPokemonCardJP(cardData);
-    let bulbapediaInfo = await fetchBulbapediaInfo(cardData);
+    const fallbackLinks = {
+      pokemon: `https://www.pokemon-card.com/card-search/index.php?keyword=${encodeURIComponent(cardData.nameJP || '')}`,
+      bulbapedia: `https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(cardData.nameEN || '').replace(/\s/g, '_')}`,
+      hareruya: `https://www.hareruya2.com/search?keyword=${encodeURIComponent(input)}`
+    };
 
-    if (!bulbapediaInfo.nameEN || bulbapediaInfo.nameEN === '—') {
-      bulbapediaInfo.nameEN = jpCardInfo.nameEN;
+    // Priority: pokemon-card.com > Bulbapedia > Hareruya
+    let picLink = fallbackLinks.pokemon;
+    if (!cardData.picSource || cardData.picSource === 'none') {
+      picLink = fallbackLinks.bulbapedia;
     }
-    if (!bulbapediaInfo.setNameEN || bulbapediaInfo.setNameEN === '—') {
-      bulbapediaInfo.setNameEN = jpCardInfo.setNameEN;
+    if (!cardData.nameJP && !cardData.nameEN) {
+      picLink = fallbackLinks.hareruya;
     }
-
-    const searchQuery = encodeURIComponent(cardData.name || bulbapediaInfo.nameEN || jpCardInfo.nameJP);
-    const priceChartingLink = `https://www.pricecharting.com/search-products?q=${searchQuery}`;
-    const ebaySearchLink = `https://www.ebay.com/sch/i.html?_nkw=${searchQuery}`;
 
     result.innerHTML = `
       <div class="card-display">
-        <img src="${jpCardInfo.image}" alt="${bulbapediaInfo.nameEN}" class="card-img">
         <ul>
-          <li><strong>Card (JP):</strong> ${jpCardInfo.nameJP} ${jpCardInfo.number}</li>
-          <li><strong>Card (EN):</strong> ${bulbapediaInfo.nameEN || jpCardInfo.nameEN} ${jpCardInfo.number}</li>
-          <li><strong>Logo:</strong> ${jpCardInfo.setCode}</li>
-          <li><strong>Set:</strong> ${jpCardInfo.setNameJP} / ${bulbapediaInfo.setNameEN}</li>
-          <li><strong>Release Year:</strong> ${jpCardInfo.releaseYear}</li>
-          <li><strong>Rarity:</strong> ${jpCardInfo.rarity}</li>
-          <li><strong>Illustrator:</strong> ${jpCardInfo.illustrator}</li>
-          <li><strong>Condition:</strong> ${jpCardInfo.condition}</li>
-          <li><strong>Price Paid (JPY):</strong> ¥${jpCardInfo.pricePaidJPY || '—'}</li>
-          <li><strong>eBay Price (USD):</strong> 
-            <a href="${priceChartingLink}" target="_blank">Price</a><br>
-            <small><a href="${ebaySearchLink}" target="_blank">eBay</a></small>
+          <li><strong>Card (JP):</strong> ${cardData.nameJP || '—'} ${cardData.number || ''}</li>
+          <li><strong>Card (EN):</strong> ${cardData.nameEN || '—'} ${cardData.number || ''}</li>
+          <li><strong>Logo:</strong> ${cardData.setCode || '—'}</li>
+          <li><strong>Set:</strong> ${cardData.setNameJP || '—'} / ${cardData.setNameEN || '—'}</li>
+          <li><strong>Release Year:</strong> ${cardData.releaseYear || '—'}</li>
+          <li><strong>Rarity:</strong> ${cardData.rarity || '—'}</li>
+          <li><strong>Illustrator:</strong> ${cardData.illustrator || '—'}</li>
+          <li><strong>Condition:</strong> NM</li>
+          <li><strong>Price Paid (JPY):</strong> ¥—</li>
+          <li><strong>eBay Price (USD):</strong> <a href="https://www.pricecharting.com/search-products?q=${searchQuery}" target="_blank">Price</a><br>
+            <small><a href="https://www.ebay.com/sch/i.html?_nkw=${searchQuery}" target="_blank">eBay</a></small>
           </li>
-          <li><strong>Buy Again?</strong> ${jpCardInfo.ebayPriceUSD && jpCardInfo.pricePaidJPY && (jpCardInfo.ebayPriceUSD > jpCardInfo.pricePaidJPY / 100 * 1.2) ? 'Yes' : '—'}</li>
+          <li><strong>PIC:</strong> <a href="${picLink}" target="_blank">View</a></li>
+          <li><strong>Buy Again?</strong> —</li>
         </ul>
       </div>
     `;
@@ -48,114 +49,35 @@ document.getElementById('fetchForm').addEventListener('submit', async (e) => {
   }
 });
 
-function parseCardInput(input) {
-  const match = input.match(/(\d{2,3})\/(\d{2,3})\s*(\w+)?\s*(RR|SR|UR|R|U|C)?/i);
-  if (match) {
-    const [, numberStart, numberEnd, setCode, rarity] = match;
-    return {
-      number: `${numberStart}/${numberEnd}`,
-      setCode: setCode || '',
-      rarity: rarity || ''
-    };
-  }
-
-  const parts = input.split(/\s+/);
-  if (parts.length >= 2 && /\d{2,3}\/\d{2,3}/.test(parts[parts.length - 1])) {
-    return {
-      name: parts.slice(0, -1).join(' '),
-      number: parts[parts.length - 1],
-      setCode: '',
-      rarity: ''
-    };
-  }
-
-  throw new Error('Please enter a card number and set, or name and number.');
-}
-
-async function fetchPokemonCardJP({ number, setCode, rarity }) {
-  const searchUrl = `https://www.pokemon-card.com/card-search/details.php/card/${encodeURIComponent(number)}/regu/all`;
+async function resolveInputViaHareruya(input) {
   try {
+    const searchUrl = `https://www.hareruya2.com/search?keyword=${encodeURIComponent(input)}`;
     const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(searchUrl)}`);
     const data = await response.json();
     const html = data.contents;
 
-    const nameJPMatch = html.match(/<h1 class="cardname">([^<]+)<\/h1>/);
-    const nameJP = nameJPMatch ? nameJPMatch[1].trim() : '—';
+    const nameEN = input.split(/\d/)[0].trim();
+    const numberMatch = html.match(/(\d{2,3})\/(\d{2,3})/);
+    const number = numberMatch ? numberMatch[0] : '';
+    const rarityMatch = html.match(/>(RR|SR|UR|R|U|C)<\/span>/);
+    const rarity = rarityMatch ? rarityMatch[1] : '';
 
-    const nameEN = 'Unknown';
-    const setNameJP = '—';
-    const releaseYear = '—';
-    const illustratorMatch = html.match(/<dt>イラストレーター<\/dt>\s*<dd>([^<]+)<\/dd>/);
-    const illustrator = illustratorMatch ? illustratorMatch[1].trim() : '—';
-
-    const imageMatch = html.match(/<div class="thumb">\s*<img src="([^"]+)"/);
-    const image = imageMatch ? `https://www.pokemon-card.com${imageMatch[1]}` : '';
+    const nameJPMatch = html.match(/<div class="product-name">([^<]+)<\/div>/);
+    const nameJP = nameJPMatch ? nameJPMatch[1].trim() : '';
 
     return {
+      nameEN,
       nameJP,
-      nameEN,
       number,
-      rarity: rarity || '—',
-      setCode,
-      setNameJP,
-      setNameEN: '—',
-      releaseYear,
-      illustrator,
-      condition: 'NM',
-      pricePaidJPY: '',
-      ebayPriceUSD: '',
-      image
+      rarity,
+      setCode: '',
+      setNameJP: '',
+      setNameEN: '',
+      releaseYear: '',
+      illustrator: '',
+      picSource: nameJP ? 'hareruya' : 'none'
     };
   } catch (err) {
-    return {
-      nameJP: '—',
-      nameEN: '—',
-      number,
-      rarity: rarity || '—',
-      setCode,
-      setNameJP: '—',
-      setNameEN: '—',
-      releaseYear: '—',
-      illustrator: '—',
-      condition: 'NM',
-      pricePaidJPY: '',
-      ebayPriceUSD: '',
-      image: '',
-    };
-  }
-}
-
-async function fetchBulbapediaInfo({ name, number }) {
-  if (!name) return { nameEN: '—', setNameEN: '—' };
-
-  try {
-    const googleQuery = `${name} ${number} Bulbapedia`;
-    const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(googleQuery)}`;
-    const googleResponse = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(googleSearchUrl)}`);
-    const googleData = await googleResponse.json();
-    const linkMatch = googleData.contents.match(/https:\/\/bulbapedia\.bulbagarden\.net\/wiki\/[^"' >]+/);
-
-    if (!linkMatch) throw new Error('No Bulbapedia result found');
-
-    const bulbapediaUrl = linkMatch[0];
-    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(bulbapediaUrl)}`);
-    const data = await response.json();
-    const html = data.contents;
-
-    const setMatch = html.match(/<th[^>]*>English expansion[^<]*<\/th>\s*<td[^>]*><a[^>]*>([^<]+)<\/a>/);
-    const setNameEN = setMatch ? setMatch[1].trim() : '—';
-
-    const nameMatch = html.match(/<title>([^|]+)\|/);
-    const nameEN = nameMatch ? nameMatch[1].trim() : name;
-
-    return {
-      nameEN,
-      setNameEN
-    };
-  } catch (err) {
-    return {
-      nameEN: name,
-      setNameEN: '—'
-    };
+    throw new Error('Failed to fetch from Hareruya2.');
   }
 }
